@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
 import QRCode from 'qrcode.react';
