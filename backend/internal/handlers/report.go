@@ -304,3 +304,69 @@ func (h *ReportHandler) VerifyReport(w http.ResponseWriter, r *http.Request) {
 		"message": "Report verified successfully",
 	})
 }
+
+func (h *ReportHandler) UpdateReport(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	reportID := vars["id"]
+	userID := r.Context().Value("userID").(string)
+
+	var updateData struct {
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Severity    string  `json:"severity"`
+		Location    string  `json:"location"`
+		Latitude    float64 `json:"latitude"`
+		Longitude   float64 `json:"longitude"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&updateData); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate input
+	if updateData.Title == "" || updateData.Description == "" {
+		http.Error(w, "Title and description are required", http.StatusBadRequest)
+		return
+	}
+
+	if updateData.Severity != "low" && updateData.Severity != "medium" && updateData.Severity != "high" && updateData.Severity != "critical" {
+		http.Error(w, "Invalid severity level", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user owns the report
+	var existingReporterID string
+	err := h.db.QueryRow("SELECT reporter_id FROM disaster_reports WHERE id = ?", reportID).Scan(&existingReporterID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Report not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	if existingReporterID != userID {
+		http.Error(w, "Unauthorized to update this report", http.StatusForbidden)
+		return
+	}
+
+	// Update the report
+	_, err = h.db.Exec(`
+		UPDATE disaster_reports 
+		SET title = ?, description = ?, severity = ?, location = ?, latitude = ?, longitude = ?, updated_at = NOW()
+		WHERE id = ?
+	`, updateData.Title, updateData.Description, updateData.Severity, updateData.Location,
+		updateData.Latitude, updateData.Longitude, reportID)
+
+	if err != nil {
+		http.Error(w, "Failed to update report", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Report updated successfully",
+	})
+}

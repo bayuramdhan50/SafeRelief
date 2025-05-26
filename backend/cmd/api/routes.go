@@ -7,9 +7,11 @@ import (
 	"os"
 
 	"saferelief/internal/auth"
+	"saferelief/internal/handlers"
 	"saferelief/internal/middleware"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 )
 
 func initDB() (*sql.DB, error) {
@@ -32,7 +34,7 @@ func initDB() (*sql.DB, error) {
 	return db, db.Ping()
 }
 
-func setupRoutes() {
+func setupRoutes() *mux.Router {
 	db, err := initDB()
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
@@ -45,10 +47,17 @@ func setupRoutes() {
 
 	// Initialize handlers
 	authHandler := auth.NewAuthHandler(jwtSecret, refreshSecret, db)
+	reportHandler := handlers.NewReportHandler(db)
+	donationHandler := handlers.NewDonationHandler(db)
+	userHandler := handlers.NewUserHandler(db)
+	uploadHandler := handlers.NewUploadHandler(db)
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
 	csrfMiddleware := middleware.NewCSRFMiddleware(csrfSecret)
+
+	// Create main router
+	router := mux.NewRouter()
 
 	// Router configuration
 	apiRouter := router.PathPrefix("/api").Subrouter()
@@ -57,7 +66,6 @@ func setupRoutes() {
 	apiRouter.Use(middleware.SecurityHeaders)
 	apiRouter.Use(middleware.SanitizeInput)
 	apiRouter.Use(csrfMiddleware.ValidateCSRF)
-
 	// Auth routes
 	authRouter := apiRouter.PathPrefix("/auth").Subrouter()
 	authRouter.HandleFunc("/register", authHandler.Register).Methods("POST")
@@ -91,4 +99,6 @@ func setupRoutes() {
 	// File upload routes with specific security measures
 	protectedRouter.HandleFunc("/uploads", uploadHandler.UploadFiles).Methods("POST")
 	protectedRouter.HandleFunc("/uploads/{id}", uploadHandler.GetFile).Methods("GET")
+
+	return router
 }

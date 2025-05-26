@@ -53,7 +53,6 @@ func main() {
 			next.ServeHTTP(w, r)
 		})
 	})
-
 	// CORS middleware
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +70,9 @@ func main() {
 		})
 	})
 
-	// Routes will be added here
+	// Setup API routes
+	apiRouter := setupRoutes()
+	router.PathPrefix("/api").Handler(http.StripPrefix("", apiRouter))
 
 	port := os.Getenv("PORT")
 	if port == "" {

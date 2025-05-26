@@ -3,10 +3,12 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -206,9 +208,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error generating MFA secret", http.StatusInternalServerError)
 		return
 	}
-
 	// Insert user into database
-	result, err := h.db.Exec(
+	_, err = h.db.Exec(
 		`INSERT INTO users (id, username, email, password_hash, mfa_secret, created_at, updated_at)
 		VALUES (UUID_TO_BIN(UUID()), ?, ?, ?, ?, NOW(), NOW())`,
 		user.Username, user.Email, hashedPassword, secret.Secret(),
@@ -316,4 +317,98 @@ func (rl *RateLimiter) Allow(key string) bool {
 
 	rl.requests[key] = &requestCount{1, now}
 	return true
+}
+
+func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	// Get refresh token from cookie
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		http.Error(w, "Refresh token not found", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse and validate refresh token
+	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return h.refreshSecret, nil
+	})
+
+	if err != nil || !token.Valid {
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+		return
+	}
+
+	userID, ok := claims["sub"].(string)
+	if !ok {
+		http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify user still exists and is not locked
+	var user User
+	err = h.db.QueryRow(`
+		SELECT id, username, email, mfa_enabled, failed_attempts, locked_until 
+		FROM users WHERE id = ?
+	`, userID).Scan(&user.ID, &user.Username, &user.Email, &user.MFAEnabled, &user.FailedAttempts, &user.LockedUntil)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if account is locked
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		http.Error(w, "Account is temporarily locked", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate new access token
+	accessToken, err := h.generateAccessToken(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate new refresh token
+	newRefreshToken, err := h.generateRefreshToken(user.ID)
+	if err != nil {
+		http.Error(w, "Failed to generate refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	// Set new refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    newRefreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   7 * 24 * 60 * 60, // 7 days
+	})
+
+	// Return new access token
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":     "Token refreshed successfully",
+		"accessToken": accessToken,
+		"user": map[string]interface{}{
+			"id":         user.ID,
+			"username":   user.Username,
+			"email":      user.Email,
+			"mfaEnabled": user.MFAEnabled,
+		},
+	})
 }
