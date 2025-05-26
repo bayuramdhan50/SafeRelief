@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 
 	"saferelief/internal/auth"
@@ -34,17 +33,9 @@ func initDB() (*sql.DB, error) {
 	return db, db.Ping()
 }
 
-func setupRoutes() *mux.Router {
-	db, err := initDB()
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
-	}
-	defer db.Close()
-
+func setupRoutes(router *mux.Router, db *sql.DB) {
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
 	refreshSecret := []byte(os.Getenv("REFRESH_TOKEN_SECRET"))
-	csrfSecret := []byte(os.Getenv("CSRF_SECRET"))
-
 	// Initialize handlers
 	authHandler := auth.NewAuthHandler(jwtSecret, refreshSecret, db)
 	reportHandler := handlers.NewReportHandler(db)
@@ -54,51 +45,38 @@ func setupRoutes() *mux.Router {
 
 	// Initialize middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtSecret)
-	csrfMiddleware := middleware.NewCSRFMiddleware(csrfSecret)
 
-	// Create main router
-	router := mux.NewRouter()
+	// Router is already /api prefixed, so we don't need to add it again
 
-	// Router configuration
-	apiRouter := router.PathPrefix("/api").Subrouter()
-
-	// Apply global middleware
-	apiRouter.Use(middleware.SecurityHeaders)
-	apiRouter.Use(middleware.SanitizeInput)
-	apiRouter.Use(csrfMiddleware.ValidateCSRF)
-	// Auth routes
-	authRouter := apiRouter.PathPrefix("/auth").Subrouter()
-	authRouter.HandleFunc("/register", authHandler.Register).Methods("POST")
-	authRouter.HandleFunc("/login", authHandler.Login).Methods("POST")
-	authRouter.HandleFunc("/logout", authHandler.Logout).Methods("POST")
-	authRouter.HandleFunc("/refresh", authHandler.RefreshToken).Methods("POST")
-
+	// Auth routes (public, no authentication required)
+	authRouter := router.PathPrefix("/auth").Subrouter()
+	authRouter.HandleFunc("/register", authHandler.Register).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/login", authHandler.Login).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/logout", authHandler.Logout).Methods("POST", "OPTIONS")
+	authRouter.HandleFunc("/refresh", authHandler.RefreshToken).Methods("POST", "OPTIONS")
 	// Protected routes
-	protectedRouter := apiRouter.PathPrefix("").Subrouter()
+	protectedRouter := router.PathPrefix("").Subrouter()
 	protectedRouter.Use(authMiddleware.Authenticate)
 
 	// User routes
-	protectedRouter.HandleFunc("/users/me", userHandler.GetProfile).Methods("GET")
-	protectedRouter.HandleFunc("/users/me", userHandler.UpdateProfile).Methods("PUT")
-	protectedRouter.HandleFunc("/users/me/mfa", userHandler.EnableMFA).Methods("POST")
-	protectedRouter.HandleFunc("/users/me/mfa", userHandler.DisableMFA).Methods("DELETE")
+	protectedRouter.HandleFunc("/users/me", userHandler.GetProfile).Methods("GET", "OPTIONS")
+	protectedRouter.HandleFunc("/users/me", userHandler.UpdateProfile).Methods("PUT", "OPTIONS")
+	protectedRouter.HandleFunc("/users/me/mfa", userHandler.EnableMFA).Methods("POST", "OPTIONS")
+	protectedRouter.HandleFunc("/users/me/mfa", userHandler.DisableMFA).Methods("DELETE", "OPTIONS")
 
 	// Disaster report routes
-	protectedRouter.HandleFunc("/reports", reportHandler.CreateReport).Methods("POST")
-	protectedRouter.HandleFunc("/reports", reportHandler.ListReports).Methods("GET")
-	protectedRouter.HandleFunc("/reports/{id}", reportHandler.GetReport).Methods("GET")
-	protectedRouter.HandleFunc("/reports/{id}", reportHandler.UpdateReport).Methods("PUT")
-	protectedRouter.HandleFunc("/reports/{id}/verify", reportHandler.VerifyReport).Methods("POST")
+	protectedRouter.HandleFunc("/reports", reportHandler.CreateReport).Methods("POST", "OPTIONS")
+	protectedRouter.HandleFunc("/reports", reportHandler.ListReports).Methods("GET", "OPTIONS")
+	protectedRouter.HandleFunc("/reports/{id}", reportHandler.GetReport).Methods("GET", "OPTIONS")
+	protectedRouter.HandleFunc("/reports/{id}", reportHandler.UpdateReport).Methods("PUT", "OPTIONS")
+	protectedRouter.HandleFunc("/reports/{id}/verify", reportHandler.VerifyReport).Methods("POST", "OPTIONS")
 
 	// Donation routes
-	protectedRouter.HandleFunc("/donations", donationHandler.CreateDonation).Methods("POST")
-	protectedRouter.HandleFunc("/donations", donationHandler.ListDonations).Methods("GET")
-	protectedRouter.HandleFunc("/donations/{id}", donationHandler.GetDonation).Methods("GET")
-	protectedRouter.HandleFunc("/donations/{id}/status", donationHandler.UpdateStatus).Methods("PUT")
-
+	protectedRouter.HandleFunc("/donations", donationHandler.CreateDonation).Methods("POST", "OPTIONS")
+	protectedRouter.HandleFunc("/donations", donationHandler.ListDonations).Methods("GET", "OPTIONS")
+	protectedRouter.HandleFunc("/donations/{id}", donationHandler.GetDonation).Methods("GET", "OPTIONS")
+	protectedRouter.HandleFunc("/donations/{id}/status", donationHandler.UpdateStatus).Methods("PUT", "OPTIONS")
 	// File upload routes with specific security measures
-	protectedRouter.HandleFunc("/uploads", uploadHandler.UploadFiles).Methods("POST")
-	protectedRouter.HandleFunc("/uploads/{id}", uploadHandler.GetFile).Methods("GET")
-
-	return router
+	protectedRouter.HandleFunc("/uploads", uploadHandler.UploadFiles).Methods("POST", "OPTIONS")
+	protectedRouter.HandleFunc("/uploads/{id}", uploadHandler.GetFile).Methods("GET", "OPTIONS")
 }

@@ -56,11 +56,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         },
         credentials: 'include',
         body: JSON.stringify({ email, password, mfaCode }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message);
+      });      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Login failed');
       }
 
       const data = await response.json();
@@ -96,11 +94,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message);
+      });      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'Registration failed');
       }
 
       router.push('/login');
