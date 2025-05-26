@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Link from 'next/link';
 import { toast } from 'react-toastify';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface UserProfile {
   id: string;
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                   Scan this QR code with your authenticator app:
                 </p>
                 <div className="flex justify-center mb-4">
-                  <QRCode value={mfaSetupData.qrCode} size={200} />
+                  <QRCodeSVG value={mfaSetupData.qrCode} size={200} />
                 </div>
                 <p className="text-gray-600 mb-2">Or enter this code manually:</p>
                 <p className="font-mono bg-gray-100 p-2 rounded mb-4">

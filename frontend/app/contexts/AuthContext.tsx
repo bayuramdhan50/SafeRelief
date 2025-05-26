@@ -3,19 +3,29 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const AuthContext = createContext({
-  user: null,
-  login: async (email: string, password: string, mfaCode?: string) => {},
-  logout: async () => {},
-  register: async (userData: {
+interface User {
+  id: string;
+  username: string;
+  name?: string;
+  email: string;
+  mfaEnabled: boolean;
+}
+
+interface AuthContextType {
+  user: User | null;
+  login: (email: string, password: string, mfaCode?: string) => Promise<void>;
+  logout: () => Promise<void>;
+  register: (userData: {
     username: string;
     email: string;
     password: string;
-  }) => {},
-});
+  }) => Promise<void>;
+}
+
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -106,4 +116,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === null) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

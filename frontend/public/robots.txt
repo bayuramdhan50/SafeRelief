@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://saferelief.com/sitemap.xml
+
+# Disallow admin and private areas
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /api/
+
+# Allow all other content
+Allow: /disasters/
+Allow: /donate/
+Allow: /register/
+Allow: /login/
+Allow: /about/
+Allow: /contact/
