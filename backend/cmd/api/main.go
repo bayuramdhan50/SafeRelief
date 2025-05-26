@@ -12,8 +12,10 @@ import (
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
+	// Load .env file from backend root directory
+	if err := godotenv.Load("../../.env"); err != nil {
+		log.Printf("Warning: Could not load .env file: %v", err)
+		log.Println("Continuing with environment variables...")
 	}
 
 	router := mux.NewRouter()
